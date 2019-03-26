@@ -32,15 +32,30 @@ You're going to see this ` %>% ` a lot.  This is called a pipe and is used a who
 
 It is analogous to `|` if you are familiar with bash scripting. It passes the previous data to the next function or command
 
-CTRL + SHIFT + M for windows or CMD + SHIFT + M for mac
+shortcuts for it are CTRL + SHIFT + M for windows or CMD + SHIFT + M for mac
 
 
-### Read in data
+##### Let's begin
+
+This dataset is some flow cytometry data collected by Sam, It has the following markers: 
+ * Live\Dead 
+ * CD3 
+ * CD4 
+ * CD8a 
+ * CD25 
+ * FoxP3
+
+
+First we will read in the data: 
 
 ```{r }
 CD3 <- read_csv('CD3pos.csv')
-CD3
+
+CD3[1:3,1:3]
+
 ```
+
+
 
 Not a bad looking dataset... needs a little cleaning thought.  The metadata is all locked up in one column.  Let's free it. 
 
@@ -91,11 +106,12 @@ CD3.long <- CD3.long %>% group_by(pignum, tissue) %>%
                      select(-num_events) %>% ungroup()
 ```
 
-One last little cleanup we might want to do is to remove the '/' characters from the `cell_types` column.  `mutate()` will overwrite existing variables.  
+One last little cleanup we might want to do is to remove the '/' characters from the `cell_types` column as well as the 'CD3+' portion of `cell_types` since all of these cells are CD3+.  `mutate()` will overwrite existing variables.  
 
 
 ```{r}
-CD3.long <- CD3.long %>% mutate(cell_type=gsub('/','', cell_type))
+CD3.long <- CD3.long %>% mutate(cell_type=gsub('/','', cell_type)) %>% 
+                         mutate(cell_type=gsub('CD3\\+','', cell_type))
 
 ```
 ### Post cleanup analysis
@@ -106,7 +122,7 @@ One of the first things I like to do is look at boxplots.
 
 ```{r}
 CD3.long %>% ggplot(aes(x=tissue, y=percent_CD3, fill=treatment)) +
-                geom_boxplot() + facet_wrap(~cell_type, scales = 'free')
+                geom_boxplot() + facet_wrap(~cell_type, scales = 'free') + theme(strip.text = element_text(size=6))
 ```
 
 
@@ -149,7 +165,7 @@ Here we use the `filter()` verb to select only the rows that meet our condition 
 
 CD3.long %>% filter(cell_type %in% CD3_sigs$cell_type) %>%
   ggplot(aes(x=tissue, y=percent_CD3, fill=treatment)) +
-    geom_boxplot() + facet_wrap(~cell_type, scales = 'free')
+    geom_boxplot() + facet_wrap(~cell_type, scales = 'free') + theme(strip.text = element_text(size=6))
 
 
 ```
@@ -174,7 +190,7 @@ CD3_summary
 
 CD3_summary %>% ggplot(aes(x=tissue, y=avg, color=treatment)) +
   geom_point(size=3) + geom_errorbar(aes(ymin=avg-std_err, ymax=avg+std_err), width=.2) + 
-  facet_wrap(~cell_type, scales = 'free')
+  facet_wrap(~cell_type, scales = 'free') + theme(strip.text = element_text(size=6))
 
 
 ```
@@ -186,7 +202,7 @@ How about if you have a favorite cell type you want to plot by itself:
 
 ```{r}
 
-CD3_summary %>% filter(cell_type == 'CD3+CD4+CD8a-FoxP3+CD25+' & tissue == 'cec') %>% 
+CD3_summary %>% filter(cell_type == 'CD4+CD8a-FoxP3+CD25+' & tissue == 'cec') %>% 
   ggplot(aes(x=treatment, y=avg, color=treatment)) + geom_errorbar(aes(ymin=avg-std_err, ymax= avg+std_err), width=0.2) +
   geom_point(size=5) + ggtitle('Percent CD3+CD4+CD8a-FoxP3+CD25+ cells') + ylab('Percent CD3+ cells')
 
@@ -200,7 +216,6 @@ CD3_summary %>% filter(cell_type == 'CD3+CD4+CD8a-FoxP3+CD25+' & tissue == 'cec'
 Data in the long format is amazing.  Why would anyone ever want data that is not long?  
 
  * It is a pain to enter data in the long format
- * It's often easier to clean data in the long format (remove weird characters from variable names etc.)
  * Some tools require data in the wide format
      ecological statistical techniques often operate on matricies, each 'species' or part of the community is a column
   
