@@ -1,0 +1,256 @@
+---
+title: "FSEP data meetup"
+author: "Julian Trachsel"
+date: "March 26, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Hello!
+
+Greetings.  Thank you for your interest in this group.  This should be fun. 
+
+I thought the main focus of this meeting could be to discuss topics for future meetings.  But first, just to get the blood moving, 
+lets go through a little exercise where we clean some data, move it between wide and long formats, plot it, run some simple tests and move it back to the wide format.
+
+### Disclaimer 
+
+> There are many ways to do things in R, this is by no means the "right" way to do these tasks, just suggestions.
+
+
+In putting together this tutorial I realized I don't really know what tidy data is...
+So take what you read here with a grain of salt.  If you want to learn more this: <https://r4ds.had.co.nz/tidy-data.html> is a great resource (the whole book is free).
+
+Instead of pretending to understand what makes data tidy, I will cover moving your data between 'long' and 'wide' and hopefully show you why each format is valuable. 
+
+
+You're going to see this ` %>% ` a lot.  This is called a pipe and is used a whole bunch in the tidyverse.  
+
+It is analogous to `|` if you are familiar with bash scripting. It passes the previous data to the next function or command
+
+CTRL + SHIFT + M for windows or CMD + SHIFT + M for mac
+
+
+### Read in data
+
+```{r }
+CD3 <- read_csv('CD3pos.csv')
+CD3
+```
+
+Not a bad looking dataset... needs a little cleaning thought.  The metadata is all locked up in one column.  Let's free it. 
+
+```{r}
+CD3$pignum <- sub('Specimen_([0-9]+) ([A-Za-z]+)_.*','\\1', CD3$Sample)  # some regular expressions to extract metadata from sample names
+
+CD3$tissue <- sub('Specimen_([0-9]+) ([A-Za-z]+)_.*','\\2', CD3$Sample)
+
+CD3$treatment <- ifelse(CD3$pignum %in% c(67:73), 'control', 'RPS')      # adding in treatment groups...
+
+CD3 <- CD3 %>% select(pignum, tissue, treatment, everything(), -Sample)  # ordering the dataframe so metadata is first, also dropping "Sample" column
+
+CD3
+```
+
+Nice.  Now we are ready to move into the "long" format.  To do this we use the function `gather()`.  Don't worry if you have trouble
+remembering how to use this function, I still look it up almost everytime I use it.  Basically `gather()` uses key, value pairs to combine all the variables you didn't specifically omit into one new column.  Usually you omit the metadata.  
+
+```{r}
+
+# convert to long format (), This data would be considered tidy?
+CD3 %>% gather(key = 'cell_type', value = 'num_events', -c(1:3))
+
+CD3.long <- CD3 %>% gather(key = 'cell_type', value = 'num_events', -c(1:3))
+
+```
+
+As you can see the data is now much longer than before.  Why is this useful?  Hopefully you will see below.
+
+Once you have the data in a long format you can use all kinds of tidyverse verbs to manipulate the data.  
+Here we are turning counts into percent_CD3 using the `group_by()` and `mutate` functions.  
+  
+ * `group_by()` allows you to specify how to group your data so that other verbs respect these groupings.  
+ * `mutate()` adds a new column to your dataframe.  
+ * `select()` includes or omits columns.  
+
+### This Block below reads as follows:  
+
+1) Using the dataframe `CD3.long`, establish groups based on combinations of pignum and tissue. 
+2) Create a new variable named `percent_CD3` which is the variable `num_events` divided by the sum of all the events (in each group of tissue and pig) * 100
+3) remove the old column `num_events` 
+4) remove the groupings we applied at the beginning.  Grouped dataframes remain grouped and can cause some weird stuff if you don't realize it.  
+
+```{r}
+
+CD3.long <- CD3.long %>% group_by(pignum, tissue) %>%
+                     mutate(percent_CD3 = (num_events / sum(num_events)) * 100) %>%
+                     select(-num_events) %>% ungroup()
+```
+
+One last little cleanup we might want to do is to remove the '/' characters from the `cell_types` column.  `mutate()` will overwrite existing variables.  
+
+
+```{r}
+CD3.long <- CD3.long %>% mutate(cell_type=gsub('/','', cell_type))
+
+```
+### Post cleanup analysis
+
+Now that our data is clean and in a long format we can very quickly do some of the most common tasks.  
+
+One of the first things I like to do is look at boxplots. 
+
+```{r}
+CD3.long %>% ggplot(aes(x=tissue, y=percent_CD3, fill=treatment)) +
+                geom_boxplot() + facet_wrap(~cell_type, scales = 'free')
+```
+
+
+
+Very interesting, how about all of the t.tests? T.tests not your thing?  Well it's simple to add in Wilcox tests as well.
+Now that our data is long, this is all so very easy:
+
+The `summarise()` verb condenses your dataframe, usually based on groupings established by `group_by()`
+
+```{r}
+
+CD3_tests <- CD3.long %>% 
+                group_by(tissue, cell_type) %>%
+                summarise(wilcox_p=wilcox.test(percent_CD3~treatment)$p.value, 
+                          t_p=t.test(percent_CD3~treatment)$p.value)
+
+CD3_tests
+```
+
+
+
+That's nice, but maybe we only want to look at data that meets some arbitrary pvalue.  
+
+```{r}
+
+
+# only cell types with a sig wilcox.test
+CD3_sigs <- CD3_tests %>% filter(wilcox_p < 0.05)
+
+
+CD3_sigs
+
+
+```
+
+How about we plot only the `cell_type`s that meet our pvalue threshold: 
+Here we use the `filter()` verb to select only the rows that meet our condition : `cell_type %in% CD3_sigs$cell_type`
+
+```{r}
+
+CD3.long %>% filter(cell_type %in% CD3_sigs$cell_type) %>%
+  ggplot(aes(x=tissue, y=percent_CD3, fill=treatment)) +
+    geom_boxplot() + facet_wrap(~cell_type, scales = 'free')
+
+
+```
+
+
+Boxplots not your thing?  
+  
+How about we calculate some summary statistics and plot those intsead: 
+
+
+
+```{r}
+
+CD3_summary <- CD3.long %>% group_by(tissue, treatment, cell_type) %>% 
+                  summarise(avg=mean(percent_CD3), 
+                    std_dev= sd(percent_CD3), 
+                    num_obs= n(), 
+                    std_err=std_dev/sqrt(num_obs)) %>% filter(cell_type %in% CD3_sigs$cell_type)
+
+CD3_summary
+
+
+CD3_summary %>% ggplot(aes(x=tissue, y=avg, color=treatment)) +
+  geom_point(size=3) + geom_errorbar(aes(ymin=avg-std_err, ymax=avg+std_err), width=.2) + 
+  facet_wrap(~cell_type, scales = 'free')
+
+
+```
+
+
+Pretty cool... 
+
+How about if you have a favorite cell type you want to plot by itself:
+
+```{r}
+
+CD3_summary %>% filter(cell_type == 'CD3+CD4+CD8a-FoxP3+CD25+' & tissue == 'cec') %>% 
+  ggplot(aes(x=treatment, y=avg, color=treatment)) + geom_errorbar(aes(ymin=avg-std_err, ymax= avg+std_err), width=0.2) +
+  geom_point(size=5) + ggtitle('Percent CD3+CD4+CD8a-FoxP3+CD25+ cells') + ylab('Percent CD3+ cells')
+
+
+
+
+
+```
+
+
+Data in the long format is amazing.  Why would anyone ever want data that is not long?  
+
+ * It is a pain to enter data in the long format
+ * It's often easier to clean data in the long format (remove weird characters from variable names etc.)
+ * Some tools require data in the wide format
+     ecological statistical techniques often operate on matricies, each 'species' or part of the community is a column
+  
+The `spread()` verb moves data from long to wide.
+
+
+```{r}
+
+CD3.wide <- CD3.long %>% mutate(set=paste(tissue, treatment,sep = '_')) %>% 
+  spread(key = cell_type, value = percent_CD3)
+
+CD3.wide
+```
+
+Now that our data is wide again. Lets look at how similar the whole T-cell communities are to each other. 
+
+```{r}
+# you will need to run these commands if you want this next part to work: 
+
+# install.packages('vegan') Awesome community ecology package
+# devtools::install_github('jtrachsel/funfuns') 
+
+library(funfuns)
+NMDS <- NMDS_ellipse(metadata = CD3.wide[,1:4], OTU_table = CD3.wide[,-c(1:4)],grouping_set = 'set')
+
+# how similar are these communities?
+NMDS[[1]] %>% ggplot(aes(x=MDS1, y=MDS2, fill=set)) + geom_point(shape =21, size=2)
+
+
+
+```
+
+Pretty cool... but we can add a few more things that will really help see some neat groupings in our data.
+
+
+```{r}
+
+# join our sets with some segments...
+NMDS[[1]] %>% ggplot(aes(x=MDS1, y=MDS2, fill=set)) + geom_point(shape =21, size=2) +
+  geom_segment(aes(xend=centroidX, yend=centroidY, color=set))
+
+```
+
+
+And finally: 
+```{r}
+# add in some standard error elipses...
+NMDS[[1]] %>% ggplot(aes(x=MDS1, y=MDS2, fill=set)) + geom_point(shape =21, size=2) +
+  geom_segment(aes(xend=centroidX, yend=centroidY, color=set)) +
+  geom_path(data = NMDS[[2]], aes(x=NMDS1, y=NMDS2, color=group), inherit.aes = FALSE)
+```
+
+Nice.  We couldn't do this easily with long format data.

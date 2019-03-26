@@ -23,8 +23,6 @@ CD3 <- CD3 %>% select(pignum, tissue, treatment, everything(), -Sample)  # order
 # convert to long format (), This data would be considered tidy?
 CD3 %>% gather(key = 'cell_type', value = 'count', -c(1:3))
 
-
-
 CD3 %>% gather(key = 'cell_type', value = 'num_events', -c(1:3)) %>% 
   group_by(pignum, tissue) %>% mutate(percent_CD3 = (num_events / sum(num_events)) * 100)
 
@@ -58,13 +56,6 @@ CD3_sigs2 <- CD3_tests %>% filter(wilcox_p < 0.05 & t_p < 0.05)
 CD3.long %>% filter(cell_type %in% CD3_sigs$cell_type) %>%
   ggplot(aes(x=tissue, y=percent_CD3, fill=treatment)) +
     geom_boxplot() + facet_wrap(~cell_type, scales = 'free')
-
-# only show cell types with both a t.test and wilcoxon pvalue > 0.05
-
-CD3.long %>% filter(cell_type %in% CD3_sigs2$cell_type) %>%
-  ggplot(aes(x=tissue, y=percent_CD3, fill=treatment)) +
-  geom_boxplot() + facet_wrap(~cell_type, scales = 'free')
-
 
 
 # summary statistics
@@ -103,8 +94,10 @@ CD3.wide <- CD3.long %>% mutate(set=paste(tissue, treatment,sep = '_')) %>%
 # NMDS tries to group similar communities together
 # I wrote a little wrapper function for vegan's implimentation of NMDS
 
+# you'll need to run this block to install these requirements for this to work:
 
-devtools::install_github('jtrachsel/funfuns')
+# install.packages('vegan') Awesome community ecology package
+# devtools::install_github('jtrachsel/funfuns') 
 library(funfuns)
 
 NMDS <- NMDS_ellipse(metadata = CD3.wide[,1:4], OTU_table = CD3.wide[,-c(1:4)],grouping_set = 'set')
@@ -121,10 +114,5 @@ NMDS[[1]] %>% ggplot(aes(x=MDS1, y=MDS2, fill=set)) + geom_point(shape =21, size
 NMDS[[1]] %>% ggplot(aes(x=MDS1, y=MDS2, fill=set)) + geom_point(shape =21, size=2) +
   geom_segment(aes(xend=centroidX, yend=centroidY, color=set)) +
   geom_path(data = NMDS[[2]], aes(x=NMDS1, y=NMDS2, color=group), inherit.aes = FALSE)
-
-
-
-
-
 
 
