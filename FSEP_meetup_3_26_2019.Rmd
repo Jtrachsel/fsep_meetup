@@ -38,7 +38,8 @@ shortcuts for it are CTRL + SHIFT + M for windows or CMD + SHIFT + M for mac
 ##### Let's begin
 
 This dataset is some flow cytometry data collected by Sam, It has the following markers: 
- * Live\Dead 
+ 
+ * Live-Dead 
  * CD3 
  * CD4 
  * CD8a 
@@ -204,7 +205,7 @@ How about if you have a favorite cell type you want to plot by itself:
 
 CD3_summary %>% filter(cell_type == 'CD4+CD8a-FoxP3+CD25+' & tissue == 'cec') %>% 
   ggplot(aes(x=treatment, y=avg, color=treatment)) + geom_errorbar(aes(ymin=avg-std_err, ymax= avg+std_err), width=0.2) +
-  geom_point(size=5) + ggtitle('Percent CD3+CD4+CD8a-FoxP3+CD25+ cells') + ylab('Percent CD3+ cells')
+  geom_point(size=5) + ggtitle('Percent CD4+CD8a-FoxP3+CD25+ cells') + ylab('Percent CD3+ cells')
 
 
 
