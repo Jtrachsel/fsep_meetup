@@ -1,0 +1,126 @@
+---
+title: "MIRA assembly"
+author: "Julian Trachsel"
+date: "5/7/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## MIRA Intro
+
+This is a general pipeline I have used for MIRA assemblies in the past.  
+
+MIRA is an Overlap Layout Consensus (OLC) assembler and ususally does a very good job with bacterial genomes.  
+It is able to do true hybrid assemblies of Pacbio and Illumina data with the right settings.  
+
+I'm not sure if it can use Nanopore reads or not. 
+
+In general MIRA is very picky and will often stop and refuse to assemble for all sorts of reasons.  These are a few I have run into:
+
+1) Read names are too long  
+2) Too much coverage  
+3) Tried to start an assembly on a NSF mount (home directory on SciNet)  
+
+Once you get it running it seems to do a very good job.
+
+It is much much slower than spades or other similar assemblers.  With Salmonella genomes MIRA takes about 2 hours with 60x-80x coverage while spades is done in a few minutes.  In my experience the assemblies with MIRA are longer and less fragmented.  So if time / number of genomes is not as issue for you, maybe give MIRA a shot.
+
+
+A little info about the data:  
+* Salmonella genome (5mb)  
+* MiSeq 2x300 PE reads  
+* Nextera Flex library prep kit (~350bp insert)  
+* 24 Salmonella genomes on 1 MiSeq run  
+
+
+## Requirements  
+
+This is the workflow I have used on Scinet, It should work for you there with minimal changes.  
+I can't make any promises about other environments.  
+
+
+
+If you want to try this pipeline there are a few things you will need...  
+
+### You need all these things in the same directory:
+
+* Your PE reads named like this : samplename_R1.fq.gz and samplename_R2.fq.gz  
+* A template MIRA manifest file: `TEMPmanifest.conf`  
+  + This is a file that tells mira what to do and what type of data you have
+* The template SLURM script `MIRAassemblyPipeline.sh`  
+* a 'samples.txt' file of your sample names ( everything before _R1.fq.gz )  
+  + this is if you are assembling many genomes  
+  
+
+
+
+This is how I make the samples.txt file listing all my samples:  
+
+
+```{bash, eval=FALSE}
+for x in *R1.fq.gz
+do
+echo "${x%_R1*}" >> samples.txt
+done
+```
+It should end up being a file with one sample name per line
+***
+  
+Next we generate all the SLURM scripts we need from the pipeline template.  
+This is how I do it:  
+
+```{bash, comment=NA, eval=FALSE}
+while read line
+do
+cat MIRAassemblyPipeline.sh | sed "s/REPLACE/$line/g" > "$line"_MIRA.SLURM
+done < samples.txt
+```
+
+This will generate a SLURM script for every sample that you have in your 'samples.txt' file.  
+
+Once you verify that they look OK you can submit them to the SLURM queue.  
+
+If you are feeling bold you can submit them all in a loop:  
+
+```{bash, eval=FALSE}
+for x in *MIRA.SLURM
+do
+sbatch $x
+done
+```
+
+
+## Descriptions of files included in this pipeling
+
+### MIRA manifest file:  
+This is what is contained within the TEMPmanifest.conf file:  
+
+```{bash, comment=NA}
+cat TEMPmanifest.conf
+```
+
+### Pipeline  
+
+* Use bbtools to do the following:  
+  * Remove optical duplicates  
+  * Remove reads from low quality regions of the flow cell  
+  * Adapter trim  
+  * Error correct  
+  * Merge PE reads  
+  * Normalize to ~80x coverage  
+* Then the reads are renamed with the fastx toolkit so MIRA doesn't complain.  
+* Then we make a manifest file for MIRA directing it to use the reads we just QC'd.  
+* Then we assemble with MIRA.  
+
+This is the template for the pipeline:  
+
+```{bash, comment=NA}
+cat MIRAassemblyPipeline.sh
+
+```
+
+
+
